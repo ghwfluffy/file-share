@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -15,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import Settings, get_settings
 from app.db import Base, SharedFile, get_db
 from app.main import app, serializer
+from app import main as main_module
 
 
 @pytest.fixture
@@ -79,6 +81,23 @@ def test_oauth_login_uses_only_configured_auth_base_url(client: TestClient) -> N
     assert location.startswith("http://testserver/auth/")
 
 
+def test_upload_and_management_pages_are_separate(client: TestClient, settings: Settings) -> None:
+    client.cookies.set(settings.session_cookie_name, auth_cookie(settings))
+
+    upload = client.get("/manage")
+    manage = client.get("/manage/manage")
+
+    assert upload.status_code == 200
+    assert manage.status_code == 200
+    assert '<section id="upload-page" class="panel upload-card">' in upload.text
+    assert '<section id="manage-page" hidden>' in upload.text
+    assert '<section id="upload-page" class="panel upload-card" hidden>' in manage.text
+    assert '<section id="manage-page">' in manage.text
+    assert "Active expiring soon" in manage.text
+    assert "Hidden" in manage.text
+    assert '<option value="years">Years</option>' in upload.text
+
+
 def test_public_share_serves_active_file(client: TestClient, settings: Settings) -> None:
     SessionLocal = app.state.testing_session_local
     with SessionLocal() as db:
@@ -131,6 +150,74 @@ def test_public_share_rejects_expired_file(client: TestClient) -> None:
     response = client.get("/public/token.txt")
 
     assert response.status_code == 410
+
+
+def test_upload_supports_year_lifetime_and_short_public_name(
+    client: TestClient,
+    settings: Settings,
+) -> None:
+    client.cookies.set(settings.session_cookie_name, auth_cookie(settings))
+
+    response = client.post(
+        "/manage/api/files",
+        files={"file": ("note.txt", b"hello", "text/plain")},
+        data={
+            "lifetime_value": "1",
+            "lifetime_unit": "years",
+            "resize_image": "false",
+            "strip_metadata": "true",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert re.match(r"^/public/[0-9a-f]{8}\.txt$", payload["share_url"])
+    created_at = datetime.fromisoformat(payload["created_at"])
+    expires_at = datetime.fromisoformat(payload["expires_at"])
+    assert timedelta(days=364) < expires_at - created_at < timedelta(days=366)
+
+
+def test_short_public_name_avoids_token_collisions(
+    client: TestClient,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    SessionLocal = app.state.testing_session_local
+    with SessionLocal() as db:
+        db.add(
+            SharedFile(
+                id="file-1",
+                public_name="deadbeef.txt",
+                original_filename="hello.txt",
+                stored_extension="txt",
+                content_type="text/plain",
+                size_bytes=5,
+                sha256="x" * 64,
+                blob_data=b"hello",
+                created_by_subject="owner",
+                created_by_username="owner",
+                created_at=datetime.now(tz=UTC),
+                expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+            )
+        )
+        db.commit()
+    tokens = iter(["deadbeef", "cafebabe"])
+    monkeypatch.setattr(main_module.secrets, "token_hex", lambda _: next(tokens))
+    client.cookies.set(settings.session_cookie_name, auth_cookie(settings))
+
+    response = client.post(
+        "/manage/api/files",
+        files={"file": ("new.txt", b"new", "text/plain")},
+        data={
+            "lifetime_value": "24",
+            "lifetime_unit": "hours",
+            "resize_image": "false",
+            "strip_metadata": "true",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["share_url"] == "/public/cafebabe.txt"
 
 
 def test_image_upload_can_strip_metadata_resize_and_create_thumbnail(
