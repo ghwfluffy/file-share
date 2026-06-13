@@ -24,7 +24,7 @@ def settings() -> Settings:
         public_url="http://testserver",
         management_base_path="/manage",
         share_base_path="/public",
-        auth_base_url="/ghwidx",
+        auth_base_url="/auth",
         session_key="test-secret",
     )
 
@@ -68,6 +68,15 @@ def test_management_page_redirects_to_oauth_when_unauthenticated(client: TestCli
 
     assert response.status_code == 307
     assert response.headers["location"].startswith("/manage/auth/oauth/login")
+
+
+def test_oauth_login_uses_only_configured_auth_base_url(client: TestClient) -> None:
+    response = client.get("/manage/auth/oauth/login", follow_redirects=False)
+
+    assert response.status_code == 307
+    location = response.headers["location"]
+    assert location.startswith("http://testserver/auth/oauth/authorize")
+    assert location.startswith("http://testserver/auth/")
 
 
 def test_public_share_serves_active_file(client: TestClient, settings: Settings) -> None:
