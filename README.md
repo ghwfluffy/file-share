@@ -1,6 +1,6 @@
 # File Share
 
-File Share is an OAuth-protected upload manager for GHWIZ.
+File Share is an OAuth-protected upload manager.
 
 - The configured management base path is the protected management UI.
 - The configured management API path is the protected JSON/upload API.
