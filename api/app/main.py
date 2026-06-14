@@ -519,6 +519,7 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
     body { margin: 0; background: #f6f7f9; color: #171717; }
     button, input, select { font: inherit; }
     .shell { max-width: 1120px; margin: 0 auto; padding: 24px; }
+    body.manage-view .shell { max-width: none; padding: 12px; }
     .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; margin-bottom: 18px; }
     h1 { font-size: clamp(2rem, 7vw, 3rem); line-height: 1.02; margin: 0; letter-spacing: 0; }
     h2 { margin: 0 0 14px; font-size: 1.25rem; letter-spacing: 0; }
@@ -551,16 +552,19 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
     .share-link { display: block; margin-top: 8px; overflow-wrap: anywhere; color: #155eef; }
     .preview { width: min(100%, 280px); max-height: 240px; object-fit: contain; border-radius: 6px; background: #e6eaf0; }
     .group { margin-bottom: 26px; }
+    body.manage-view .group { margin-bottom: 18px; }
     .group-heading { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 10px; }
+    body.manage-view .group-heading { margin-bottom: 4px; padding: 0 2px; }
     .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
     .tile { appearance: none; text-align: left; border: 1px solid #d9dee7; border-radius: 8px; padding: 0; background: #fff; overflow: hidden; cursor: pointer; min-width: 0; }
     .tile:hover, .tile:focus-visible { border-color: #155eef; outline: none; box-shadow: 0 0 0 2px rgba(21, 94, 239, 0.15); }
     .tile img, .tile-placeholder { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #e6eaf0; }
     .tile-placeholder { display: grid; place-items: center; color: #667085; font-weight: 700; }
-    .tile-body { padding: 10px; }
-    .tile-title { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tile-meta { display: block; color: #5f6672; font-size: 0.82rem; margin-top: 3px; }
+    body.manage-view .tile-grid { grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 2px; }
+    body.manage-view .tile { border: 0; border-radius: 0; }
+    body.manage-view .tile:hover, body.manage-view .tile:focus-visible { outline: 2px solid #155eef; outline-offset: -2px; box-shadow: none; }
     .empty { color: #667085; border: 1px dashed #c5ccd8; border-radius: 8px; padding: 14px; background: #fff; }
+    body.manage-view .empty { grid-column: 1 / -1; }
     .modal-backdrop { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.58); padding: 18px; z-index: 20; }
     .modal-backdrop.open { display: flex; }
     .modal { width: min(920px, 100%); max-height: min(90vh, 900px); overflow: auto; background: #fff; border-radius: 8px; padding: 18px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35); }
@@ -574,15 +578,17 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
     .extend-form { display: grid; grid-template-columns: minmax(80px, 120px) minmax(110px, 1fr) auto; gap: 8px; align-items: end; margin: 12px 0; }
     @media (max-width: 820px) {
       .shell { padding: 20px 16px; }
+      body.manage-view .shell { padding: 8px; }
       .topbar { grid-template-columns: 1fr; }
       .form-grid, .modal-grid, .extend-form { grid-template-columns: 1fr; }
       .tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      body.manage-view .tile-grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 2px; }
       .modal { padding: 14px; }
       .btn.full, #upload-button { width: 100%; }
     }
   </style>
 </head>
-<body>
+<body class="__BODY_CLASS__">
   <main class="shell">
     <header class="topbar">
       <div>
@@ -748,12 +754,8 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
         ? `<img src="${escapeHtml(file.thumbnail_url)}" alt="">`
         : '<span class="tile-placeholder">File</span>';
       return `
-        <button class="tile" type="button" data-open="${escapeHtml(file.id)}">
+        <button class="tile" type="button" data-open="${escapeHtml(file.id)}" aria-label="${escapeHtml(file.original_filename)}">
           ${thumb}
-          <span class="tile-body">
-            <span class="tile-title">${escapeHtml(file.original_filename)}</span>
-            <span class="tile-meta">${escapeHtml(fmtDate(file.expires_at))}</span>
-          </span>
         </button>
       `;
     }
@@ -866,22 +868,26 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
 
     document.querySelector("#upload-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      uploadButton.disabled = true;
+      const form = event.currentTarget;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (uploadButton) uploadButton.disabled = true;
       status("Uploading...");
       try {
-        const data = new FormData(event.currentTarget);
+        const data = new FormData(form);
         if (!data.has("strip_metadata")) data.set("strip_metadata", "false");
         if (!data.has("resize_image")) data.set("resize_image", "false");
         const uploaded = await api("/files", { method: "POST", body: data });
-        event.currentTarget.reset();
-        document.querySelector("#strip_metadata").checked = true;
-        document.querySelector("#file-name").textContent = "No file selected";
+        form.reset();
+        const stripMetadata = form.querySelector("#strip_metadata");
+        if (stripMetadata instanceof HTMLInputElement) stripMetadata.checked = true;
+        const fileName = document.querySelector("#file-name");
+        if (fileName) fileName.textContent = "No file selected";
         renderUploadResult(uploaded);
         status(`Upload ready: ${uploaded.public_share_url}`);
       } catch (error) {
         status(error.message);
       } finally {
-        uploadButton.disabled = false;
+        if (uploadButton) uploadButton.disabled = false;
       }
     });
 
@@ -962,6 +968,7 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
         .replace("__BASE_HTML__", management_base)
         .replace("__BASE_JSON__", json.dumps(settings.normalized_management_base_path))
         .replace("__PAGE_JSON__", json.dumps(page))
+        .replace("__BODY_CLASS__", "manage-view" if page == "manage" else "upload-view")
         .replace("__UPLOAD_CURRENT__", upload_current)
         .replace("__MANAGE_CURRENT__", manage_current)
         .replace("__UPLOAD_HIDDEN__", upload_hidden)

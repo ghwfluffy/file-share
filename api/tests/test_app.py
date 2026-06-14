@@ -96,6 +96,11 @@ def test_upload_and_management_pages_are_separate(client: TestClient, settings: 
     assert "Active expiring soon" in manage.text
     assert "Hidden" in manage.text
     assert '<option value="years">Years</option>' in upload.text
+    assert "event.currentTarget.reset()" not in upload.text
+    assert "form.reset()" in upload.text
+    assert '<span class="tile-title">' not in manage.text
+    assert '<span class="tile-meta">' not in manage.text
+    assert "body.manage-view .tile-grid" in manage.text
 
 
 def test_public_share_serves_active_file(client: TestClient, settings: Settings) -> None:
