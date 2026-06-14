@@ -1,0 +1,3 @@
+[submodule "vendor/federated-banner"]
+	path = vendor/federated-banner
+	url = git@github.com:ghwfluffy/federated-banner.git

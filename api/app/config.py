@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     management_base_path: str = "/files"
     share_base_path: str = "/public-files"
     auth_base_url: str = "/auth"
+    federated_goals_base_url: str = ""
+    federated_money_planner_base_url: str = ""
+    federated_agent_base_url: str = ""
+    federated_apartment_gate_base_url: str = ""
+    federated_file_share_base_url: str = ""
     oauth_server_base_url: str | None = None
     oauth_client_id: str = "file-share"
     oauth_scope: str = "openid profile"
@@ -80,6 +85,32 @@ class Settings(BaseSettings):
         if raw.startswith("http://") or raw.startswith("https://"):
             return raw
         return f"{self.public_origin}{normalize_path_prefix(raw)}"
+
+    def browser_base_url(self, value: str) -> str:
+        raw = value.rstrip("/")
+        if raw.startswith("http://") or raw.startswith("https://"):
+            return raw
+        return normalize_path_prefix(raw)
+
+    @property
+    def federated_banner_sites(self) -> list[dict[str, str]]:
+        entries = [
+            ("federated-services", "Federated Services", self.auth_base_url, "Account settings and federated service administration."),
+            ("goals", "Goal Tracker", self.federated_goals_base_url, "Goals, metrics, dashboards, and progress widgets."),
+            ("money-planner", "Fluffynomics", self.federated_money_planner_base_url, "Accounts, expenses, contracts, investments, and net worth."),
+            ("agent", "AI Assistant", self.federated_agent_base_url, "Assistant tasks, mailbox workflows, and audited agent activity."),
+            ("apartment-gate", "Apartment Gate", self.federated_apartment_gate_base_url, "Protected apartment gate and door controls."),
+            ("file-share", "File Share", self.federated_file_share_base_url or self.management_base_path, "Uploads, expiring share links, and revocation."),
+        ]
+        return [
+            {"slug": slug, "name": name, "baseUrl": self.browser_base_url(base_url), "description": description}
+            for slug, name, base_url, description in entries
+            if base_url.strip()
+        ]
+
+    @property
+    def account_settings_url(self) -> str:
+        return f"{self.browser_base_url(self.auth_base_url)}?tab=profile"
 
     @property
     def normalized_oauth_server_base_url(self) -> str:

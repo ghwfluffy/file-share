@@ -25,6 +25,14 @@ from app.image_processing import process_upload
 
 
 app = FastAPI(title="File Share")
+BANNER_SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "vendor"
+    / "federated-banner"
+    / "dist"
+    / "browser"
+    / "federated-banner.iife.js"
+)
 
 
 def serializer(settings: Settings) -> URLSafeTimedSerializer:
@@ -199,6 +207,18 @@ def startup() -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/{management_slug}/static/federated-banner.js")
+def federated_banner_script(
+    management_slug: str,
+    _: Annotated[dict[str, str], Depends(require_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
+    require_prefix(management_slug, settings.normalized_management_base_path)
+    if not BANNER_SCRIPT_PATH.is_file():
+        raise HTTPException(status_code=404)
+    return Response(BANNER_SCRIPT_PATH.read_bytes(), media_type="text/javascript")
 
 
 @app.get("/{management_slug}")
@@ -587,8 +607,16 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
       .btn.full, #upload-button { width: 100%; }
     }
   </style>
+  <script src="__BASE_HTML__/static/federated-banner.js"></script>
 </head>
 <body class="__BODY_CLASS__">
+  <ghwiz-federated-banner
+    id="federated-banner"
+    app-name="File Share"
+    app-url="__BASE_HTML__/"
+    current-app-slug="file-share"
+    account-settings-url="__ACCOUNT_SETTINGS_URL__"
+  ></ghwiz-federated-banner>
   <main class="shell">
     <header class="topbar">
       <div>
@@ -599,7 +627,7 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
           <a href="__BASE_HTML__/manage"__MANAGE_CURRENT__>Manage</a>
         </nav>
       </div>
-      <form method="post" action="__BASE_HTML__/auth/logout">
+      <form id="logout-form" method="post" action="__BASE_HTML__/auth/logout">
         <button class="btn secondary" type="submit">Sign out</button>
       </form>
     </header>
@@ -685,6 +713,8 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
   <script>
     const base = __BASE_JSON__;
     const page = __PAGE_JSON__;
+    const bannerSites = __BANNER_SITES_JSON__;
+    const bannerUser = __BANNER_USER_JSON__;
     let files = [];
     let selectedFile = null;
     const uploadPage = document.querySelector("#upload-page");
@@ -695,9 +725,19 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
     const modal = document.querySelector("#file-modal");
     const modalTitle = document.querySelector("#modal-title");
     const modalBody = document.querySelector("#modal-body");
+    const banner = document.querySelector("#federated-banner");
 
     uploadPage.hidden = page !== "upload";
     managePage.hidden = page !== "manage";
+    if (banner) {
+      banner.sites = bannerSites;
+      banner.user = bannerUser;
+      banner.addEventListener("federated-banner-action", (event) => {
+        if (event.detail?.action === "sign-out") {
+          document.querySelector("#logout-form")?.submit();
+        }
+      });
+    }
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -968,6 +1008,12 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
         .replace("__BASE_HTML__", management_base)
         .replace("__BASE_JSON__", json.dumps(settings.normalized_management_base_path))
         .replace("__PAGE_JSON__", json.dumps(page))
+        .replace("__BANNER_SITES_JSON__", json.dumps(settings.federated_banner_sites))
+        .replace("__BANNER_USER_JSON__", json.dumps({
+            "displayName": username,
+            "username": user.get("preferred_username") or username,
+        }))
+        .replace("__ACCOUNT_SETTINGS_URL__", html.escape(settings.account_settings_url, quote=True))
         .replace("__BODY_CLASS__", "manage-view" if page == "manage" else "upload-view")
         .replace("__UPLOAD_CURRENT__", upload_current)
         .replace("__MANAGE_CURRENT__", manage_current)

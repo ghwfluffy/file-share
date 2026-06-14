@@ -101,6 +101,20 @@ def test_upload_and_management_pages_are_separate(client: TestClient, settings: 
     assert '<span class="tile-title">' not in manage.text
     assert '<span class="tile-meta">' not in manage.text
     assert "body.manage-view .tile-grid" in manage.text
+    assert "<ghwiz-federated-banner" in upload.text
+    assert 'current-app-slug="file-share"' in upload.text
+    assert "__BANNER_SITES_JSON__" not in upload.text
+
+
+def test_federated_banner_script_is_protected(client: TestClient, settings: Settings) -> None:
+    unauthenticated = client.get("/manage/static/federated-banner.js", follow_redirects=False)
+    assert unauthenticated.status_code == 307
+
+    client.cookies.set(settings.session_cookie_name, auth_cookie(settings))
+    response = client.get("/manage/static/federated-banner.js")
+
+    assert response.status_code == 200
+    assert "customElements.define" in response.text
 
 
 def test_public_share_serves_active_file(client: TestClient, settings: Settings) -> None:
