@@ -110,7 +110,7 @@ class Settings(BaseSettings):
 
     @property
     def account_settings_url(self) -> str:
-        return f"{self.browser_base_url(self.auth_base_url)}?tab=profile"
+        return f"{self.browser_base_url(self.auth_base_url)}?tab=account-settings"
 
     @property
     def normalized_oauth_server_base_url(self) -> str:

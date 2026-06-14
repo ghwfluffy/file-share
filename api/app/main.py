@@ -521,7 +521,7 @@ def shared_file(
 
 
 def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
-    username = html.escape(user.get("preferred_username") or user.get("name") or "Signed in")
+    display_name = user.get("preferred_username") or user.get("name") or "Signed in"
     management_base = html.escape(settings.normalized_management_base_path)
     upload_current = ' aria-current="page"' if page == "upload" else ""
     manage_current = ' aria-current="page"' if page == "manage" else ""
@@ -540,12 +540,12 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
     button, input, select { font: inherit; }
     .shell { max-width: 1120px; margin: 0 auto; padding: 24px; }
     body.manage-view .shell { max-width: none; padding: 12px; }
-    .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; margin-bottom: 18px; }
+    .topbar { display: flex; align-items: center; margin-bottom: 18px; }
     h1 { font-size: clamp(2rem, 7vw, 3rem); line-height: 1.02; margin: 0; letter-spacing: 0; }
     h2 { margin: 0 0 14px; font-size: 1.25rem; letter-spacing: 0; }
     h3 { margin: 0 0 10px; font-size: 1rem; letter-spacing: 0; }
     .muted { color: #5f6672; }
-    .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .nav { display: flex; gap: 8px; flex-wrap: wrap; }
     .nav a { border: 1px solid #b7bfcc; border-radius: 6px; color: #1f2937; padding: 0.52rem 0.75rem; text-decoration: none; }
     .nav a[aria-current="page"] { background: #1f2937; border-color: #1f2937; color: #fff; }
     .panel { background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -619,18 +619,12 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
   ></ghwiz-federated-banner>
   <main class="shell">
     <header class="topbar">
-      <div>
-        <h1>File Share</h1>
-        <div class="muted">Signed in as __USERNAME__</div>
-        <nav class="nav" aria-label="File share navigation">
-          <a href="__BASE_HTML__/"__UPLOAD_CURRENT__>Upload</a>
-          <a href="__BASE_HTML__/manage"__MANAGE_CURRENT__>Manage</a>
-        </nav>
-      </div>
-      <form id="logout-form" method="post" action="__BASE_HTML__/auth/logout">
-        <button class="btn secondary" type="submit">Sign out</button>
-      </form>
+      <nav class="nav" aria-label="File share navigation">
+        <a href="__BASE_HTML__/"__UPLOAD_CURRENT__>Upload</a>
+        <a href="__BASE_HTML__/manage"__MANAGE_CURRENT__>Manage</a>
+      </nav>
     </header>
+    <form id="logout-form" method="post" action="__BASE_HTML__/auth/logout" hidden></form>
 
     <section id="upload-page" class="panel upload-card"__UPLOAD_HIDDEN__>
       <h2>Upload</h2>
@@ -1004,14 +998,13 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
 </html>"""
     return (
         html_doc
-        .replace("__USERNAME__", username)
         .replace("__BASE_HTML__", management_base)
         .replace("__BASE_JSON__", json.dumps(settings.normalized_management_base_path))
         .replace("__PAGE_JSON__", json.dumps(page))
         .replace("__BANNER_SITES_JSON__", json.dumps(settings.federated_banner_sites))
         .replace("__BANNER_USER_JSON__", json.dumps({
-            "displayName": username,
-            "username": user.get("preferred_username") or username,
+            "displayName": display_name,
+            "username": user.get("preferred_username") or display_name,
         }))
         .replace("__ACCOUNT_SETTINGS_URL__", html.escape(settings.account_settings_url, quote=True))
         .replace("__BODY_CLASS__", "manage-view" if page == "manage" else "upload-view")

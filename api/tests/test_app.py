@@ -103,6 +103,10 @@ def test_upload_and_management_pages_are_separate(client: TestClient, settings: 
     assert "body.manage-view .tile-grid" in manage.text
     assert "<ghwiz-federated-banner" in upload.text
     assert 'current-app-slug="file-share"' in upload.text
+    assert 'account-settings-url="/auth?tab=account-settings"' in upload.text
+    assert "<h1>File Share</h1>" not in upload.text
+    assert "Signed in as" not in upload.text
+    assert ">Sign out<" not in upload.text
     assert "__BANNER_SITES_JSON__" not in upload.text
 
 
