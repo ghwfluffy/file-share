@@ -81,6 +81,24 @@ def test_oauth_login_uses_only_configured_auth_base_url(client: TestClient) -> N
     assert location.startswith("http://testserver/auth/")
 
 
+def test_oauth_callback_retries_once_when_state_is_missing(client: TestClient, settings: Settings) -> None:
+    response = client.get("/manage/auth/oauth/callback?code=abc&state=missing", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/manage/auth/oauth/login?next=%2Fmanage%2F"
+    retry_cookie = response.cookies.get(f"{settings.oauth_state_cookie_name}_auto_retry")
+    assert retry_cookie == "1"
+
+
+def test_oauth_callback_stops_retrying_after_one_missing_state(client: TestClient, settings: Settings) -> None:
+    client.cookies.set(f"{settings.oauth_state_cookie_name}_auto_retry", "1")
+
+    response = client.get("/manage/auth/oauth/callback?code=abc&state=missing", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/manage/?oauth_error=oauth_state"
+
+
 def test_upload_and_management_pages_are_separate(client: TestClient, settings: Settings) -> None:
     client.cookies.set(settings.session_cookie_name, auth_cookie(settings))
 

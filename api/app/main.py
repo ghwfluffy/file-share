@@ -52,6 +52,10 @@ def management_url(settings: Settings, path: str = "") -> str:
     return f"{settings.normalized_management_base_path}{suffix}"
 
 
+def oauth_auto_retry_cookie_name(settings: Settings) -> str:
+    return f"{settings.oauth_state_cookie_name}_auto_retry"
+
+
 def share_url(settings: Settings, public_name: str) -> str:
     return f"{settings.normalized_share_base_path}/{public_name}"
 
@@ -97,6 +101,34 @@ def signed_cookie(value: str | None, settings: Settings, *, max_age_seconds: int
     except BadSignature:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def clear_oauth_auto_retry_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(oauth_auto_retry_cookie_name(settings), path=settings.normalized_management_base_path)
+
+
+def oauth_state_retry_redirect(request: Request, settings: Settings) -> RedirectResponse:
+    retry_cookie = oauth_auto_retry_cookie_name(settings)
+    if request.cookies.get(retry_cookie) == "1":
+        response = RedirectResponse(management_url(settings, "/?oauth_error=oauth_state"))
+        clear_oauth_auto_retry_cookie(response, settings)
+        response.delete_cookie(settings.oauth_state_cookie_name, path=settings.normalized_management_base_path)
+        return response
+
+    response = RedirectResponse(
+        management_url(settings, f"/auth/oauth/login?{urlencode({'next': management_url(settings, '/')})}")
+    )
+    response.set_cookie(
+        retry_cookie,
+        "1",
+        max_age=60,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path=settings.normalized_management_base_path,
+    )
+    response.delete_cookie(settings.oauth_state_cookie_name, path=settings.normalized_management_base_path)
+    return response
 
 
 def current_user(
@@ -296,7 +328,7 @@ async def oauth_callback(
         max_age_seconds=600,
     )
     if not code or not state or not state_payload or state_payload.get("state") != state:
-        return RedirectResponse(management_url(settings, "/?oauth_error=oauth_state"))
+        return oauth_state_retry_redirect(request, settings)
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -321,10 +353,12 @@ async def oauth_callback(
     except Exception:
         response = RedirectResponse(management_url(settings, "/?oauth_error=oauth_failed"))
         response.delete_cookie(settings.oauth_state_cookie_name, path=settings.normalized_management_base_path)
+        clear_oauth_auto_retry_cookie(response, settings)
         return response
 
     response = RedirectResponse(str(state_payload.get("next") or management_url(settings, "/")))
     response.delete_cookie(settings.oauth_state_cookie_name, path=settings.normalized_management_base_path)
+    clear_oauth_auto_retry_cookie(response, settings)
     response.set_cookie(
         settings.session_cookie_name,
         serializer(settings).dumps(
