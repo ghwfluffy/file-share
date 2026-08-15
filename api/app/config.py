@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from secrets import token_urlsafe
 from urllib.parse import urlsplit
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     federated_agent_base_url: str = ""
     federated_apartment_gate_base_url: str = ""
     federated_file_share_base_url: str = ""
+    federated_apps: str = ""
     oauth_server_base_url: str | None = None
     oauth_client_id: str = "file-share"
     oauth_scope: str = "openid profile"
@@ -94,6 +96,28 @@ class Settings(BaseSettings):
 
     @property
     def federated_banner_sites(self) -> list[dict[str, str]]:
+        if self.federated_apps.strip():
+            try:
+                configured = json.loads(self.federated_apps)
+            except json.JSONDecodeError as error:
+                raise ValueError("FEDERATED_APPS must be valid JSON.") from error
+            if not isinstance(configured, list):
+                raise ValueError("FEDERATED_APPS must be a JSON array.")
+            sites: list[dict[str, str]] = []
+            for entry in configured:
+                if not isinstance(entry, dict):
+                    raise ValueError("FEDERATED_APPS entries must be objects.")
+                slug, name, base_url = entry.get("slug"), entry.get("name"), entry.get("baseUrl")
+                if not all(isinstance(value, str) and value.strip() for value in (slug, name, base_url)):
+                    raise ValueError("FEDERATED_APPS entries need slug, name, and baseUrl strings.")
+                description = entry.get("description", "")
+                sites.append({
+                    "slug": slug.strip(),
+                    "name": name.strip(),
+                    "baseUrl": self.browser_base_url(base_url),
+                    "description": description.strip() if isinstance(description, str) else "",
+                })
+            return sites
         entries = [
             ("federated-services", "Federated Services", self.auth_base_url, "Account settings and federated service administration."),
             ("goals", "Goal Tracker", self.federated_goals_base_url, "Goals, metrics, dashboards, and progress widgets."),

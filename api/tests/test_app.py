@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
@@ -137,6 +138,18 @@ def test_federated_banner_script_is_protected(client: TestClient, settings: Sett
 
     assert response.status_code == 200
     assert "customElements.define" in response.text
+
+
+def test_configured_federated_inventory_replaces_legacy_partial_list() -> None:
+    configured = Settings(
+        app_env="test",
+        federated_apps=json.dumps([
+            {"slug": "notes", "name": "My Notes", "baseUrl": "/notes", "description": "Lists"},
+            {"slug": "model-gateway", "name": "Model Gateway", "baseUrl": "/models"},
+        ]),
+    )
+
+    assert [site["slug"] for site in configured.federated_banner_sites] == ["notes", "model-gateway"]
 
 
 def test_public_share_serves_active_file(client: TestClient, settings: Settings) -> None:

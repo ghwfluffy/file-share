@@ -17,3 +17,7 @@ storage.
 Generated anonymous share names use eight hexadecimal characters plus the stored
 file extension. The app checks for an existing token across extensions before it
 allocates a new share name.
+
+The authenticated UI uses the shared federated banner. A parent deployment may
+provide a `FEDERATED_APPS` JSON inventory so every enabled app appears in the
+switcher; individual app base URL settings remain a standalone fallback.
