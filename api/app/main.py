@@ -803,8 +803,39 @@ def render_index(settings: Settings, user: dict[str, str], *, page: str) -> str:
       input.remove();
     }
 
+// Restore the app cookie through OAuth without navigating the visible page.
+function createSessionRecovery(loginUrl, enabled = true) {
+  let pending = null;
+  let generation = 0;
+  return async function withSessionRecovery(send, eligible = true) {
+    const started = generation;
+    const response = await send();
+    if (!enabled || !eligible || response.status !== 401) return response;
+    if (started === generation) {
+      if (!pending) {
+        pending = (async () => {
+          try {
+            const url = new URL(loginUrl(), window.location.href);
+            if (url.origin !== window.location.origin) return;
+            await fetch(url, {
+              credentials: "same-origin", cache: "no-store",
+              signal: AbortSignal.timeout(10000),
+            });
+            generation += 1;
+          } catch {
+            // The single retry below decides whether authentication was restored.
+          }
+        })().finally(() => { pending = null; });
+      }
+      await pending;
+    }
+    return send();
+  };
+}
+
+const recoverSession = createSessionRecovery(() => `${base}/auth/oauth/login`);
     async function api(path, options = {}) {
-      const response = await fetch(`${base}/api${path}`, { credentials: "same-origin", ...options });
+      const response = await recoverSession(() => fetch(`${base}/api${path}`, { credentials: "same-origin", ...options }), !path.startsWith("/auth/") || path === "/auth/me");
       if (response.status === 401) {
         window.location.assign(`${base}/auth/oauth/login`);
         throw new Error("Not authenticated");
